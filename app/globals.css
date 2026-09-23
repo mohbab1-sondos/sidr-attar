@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+@theme {
+  --color-sidr-green: #2E5A3E;
+  --color-sidr-cream: #FDFBF7;
+  --color-sidr-brown: #8B5A2B;
+  --color-sidr-light-green: #E8F0E8;
+  --font-cairo: var(--font-cairo), sans-serif;
+}
+
+body {
+  background-color: var(--color-sidr-cream);
+  color: #1f2937;
+}
