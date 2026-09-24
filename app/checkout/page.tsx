@@ -1,25 +1,26 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useCart, CartItem } from "../context/CartContext";
-import { ArrowRight, CheckCircle2, MessageCircle, MapPin, Phone, User, CreditCard, Truck, AlertCircle } from "lucide-react";
+import { ArrowRight, CheckCircle2, MessageCircle, MapPin, Phone, User, CreditCard, Truck, AlertCircle, Loader2 } from "lucide-react";
+import { supabase } from "../lib/supabase";
 
-const STORE_WHATSAPP = "201559077281";
-const FREE_DELIVERY = false;
+interface DeliveryArea {
+  id: number;
+  name: string;
+  fee: number;
+}
 
-const DELIVERY_AREAS = [
-  { id: 1, name: "المنطقة الأولى - وسط البلد", fee: 20, isActive: true },
-  { id: 2, name: "المنطقة الثانية - المعادي", fee: 35, isActive: true },
-  { id: 3, name: "المنطقة الثالثة - مدينة نصر", fee: 45, isActive: true },
-  { id: 4, name: "المنطقة الرابعة - أكتوبر", fee: 60, isActive: false },
-];
-
-const PAYMENT_METHODS = [
-  { id: "cod", name: "الدفع عند الاستلام", isActive: true, icon: Truck, description: "ادفع نقداً عند استلام الطلب" },
-  { id: "vodafone", name: "فودافون كاش", isActive: true, icon: Phone, description: "التحويل إلى رقم: 01000000000" },
-  { id: "instapay", name: "إنستاباي", isActive: true, icon: CreditCard, description: "التحويل إلى: sidr@instapay" },
-];
+interface StoreSettings {
+  whatsapp_number: string;
+  free_delivery: boolean;
+  cod_enabled: boolean;
+  vodafone_cash_enabled: boolean;
+  vodafone_cash_number: string | null;
+  instapay_enabled: boolean;
+  instapay_account: string | null;
+}
 
 interface OrderSnapshot {
   cart: CartItem[];
@@ -29,21 +30,29 @@ interface OrderSnapshot {
   formData: any;
   selectedArea: any;
   paymentMethod: string;
+  paymentMethodLabel: string;
+  orderId: number;
 }
 
 export default function CheckoutPage() {
   const { cart, cartTotal, clearCart } = useCart();
+  const [loading, setLoading] = useState(true);
+  const [storeSettings, setStoreSettings] = useState<StoreSettings | null>(null);
+  const [deliveryAreas, setDeliveryAreas] = useState<DeliveryArea[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
+
   const [formData, setFormData] = useState({
     name: "", phone: "", whatsapp: "", city: "", areaId: "", address: "", landmark: "", notes: "",
   });
-  const [paymentMethod, setPaymentMethod] = useState("cod");
+  const [paymentMethod, setPaymentMethod] = useState("");
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [orderNumber, setOrderNumber] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [orderSnapshot, setOrderSnapshot] = useState<OrderSnapshot | null>(null);
   const [showErrorBanner, setShowErrorBanner] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [whatsappSent, setWhatsappSent] = useState(false);
 
-  // مراجع للتمرير إلى أول حقل به خطأ
   const formRef = useRef<HTMLFormElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   const phoneRef = useRef<HTMLInputElement>(null);
@@ -51,15 +60,54 @@ export default function CheckoutPage() {
   const areaRef = useRef<HTMLSelectElement>(null);
   const addressRef = useRef<HTMLInputElement>(null);
 
-  const selectedArea = DELIVERY_AREAS.find((a) => a.id === Number(formData.areaId));
-  const deliveryFee = FREE_DELIVERY ? 0 : selectedArea ? selectedArea.fee : 0;
+  useEffect(() => {
+    async function fetchData() {
+      setLoading(true);
+      
+      const [settingsRes, areasRes] = await Promise.all([
+        supabase.from("store_settings").select("*").limit(1).single(),
+        supabase.from("delivery_areas").select("id, name, fee").eq("is_active", true).order("id", { ascending: true }),
+      ]);
+
+      if (settingsRes.data) {
+        setStoreSettings(settingsRes.data);
+        
+        const methods = [];
+        if (settingsRes.data.cod_enabled) {
+          methods.push({ id: "cod", name: "الدفع عند الاستلام", description: "ادفع نقداً عند استلام الطلب" });
+        }
+        if (settingsRes.data.vodafone_cash_enabled) {
+          methods.push({ 
+            id: "vodafone", 
+            name: "فودافون كاش", 
+            description: `التحويل إلى: ${settingsRes.data.vodafone_cash_number || "-"}` 
+          });
+        }
+        if (settingsRes.data.instapay_enabled) {
+          methods.push({ 
+            id: "instapay", 
+            name: "إنستاباي", 
+            description: `التحويل إلى: ${settingsRes.data.instapay_account || "-"}` 
+          });
+        }
+        setPaymentMethods(methods);
+        if (methods.length > 0) setPaymentMethod(methods[0].id);
+      }
+
+      if (areasRes.data) setDeliveryAreas(areasRes.data);
+      setLoading(false);
+    }
+    fetchData();
+  }, []);
+
+  const selectedArea = deliveryAreas.find((a) => a.id === Number(formData.areaId));
+  const freeDelivery = storeSettings?.free_delivery || false;
+  const deliveryFee = freeDelivery ? 0 : selectedArea ? selectedArea.fee : 0;
   const finalTotal = cartTotal + deliveryFee;
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
-    if (errors[e.target.name]) {
-      setErrors({ ...errors, [e.target.name]: "" });
-    }
+    if (errors[e.target.name]) setErrors({ ...errors, [e.target.name]: "" });
   };
 
   const validate = () => {
@@ -69,12 +117,12 @@ export default function CheckoutPage() {
     if (!formData.city.trim()) newErrors.city = "المدينة مطلوبة";
     if (!formData.areaId) newErrors.areaId = "اختر منطقة التوصيل";
     if (!formData.address.trim()) newErrors.address = "العنوان التفصيلي مطلوب";
+    if (!paymentMethod) newErrors.payment = "اختر طريقة الدفع";
     setErrors(newErrors);
     return newErrors;
   };
 
   const scrollToFirstError = (errs: Record<string, string>) => {
-    // الترتيب حسب ظهور الحقول في الصفحة
     const fieldOrder = ["name", "phone", "city", "areaId", "address"];
     for (const field of fieldOrder) {
       if (errs[field]) {
@@ -111,20 +159,17 @@ export default function CheckoutPage() {
     msg += `المنتجات: ${snapshot.cartTotal.toFixed(2)} جنيه\n`;
     msg += `التوصيل: ${snapshot.deliveryFee.toFixed(2)} جنيه\n`;
     msg += `*الإجمالي النهائي: ${snapshot.finalTotal.toFixed(2)} جنيه*\n\n`;
-    const pm = PAYMENT_METHODS.find((p) => p.id === snapshot.paymentMethod);
-    msg += `💳 *طريقة الدفع:* ${pm?.name || "-"}`;
+    msg += `💳 *طريقة الدفع:* ${snapshot.paymentMethodLabel}`;
     return msg;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setShowErrorBanner(false);
 
     const validationErrors = validate();
-
     if (Object.keys(validationErrors).length > 0) {
       setShowErrorBanner(true);
-      // تأخير بسيط لضمان ظهور رسائل الخطأ في الـ DOM قبل التمرير
       setTimeout(() => {
         scrollToFirstError(validationErrors);
         formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -132,29 +177,103 @@ export default function CheckoutPage() {
       return;
     }
 
+    setIsSubmitting(true);
     const newOrderNumber = `DS-${Math.floor(100000 + Math.random() * 900000)}`;
-    setOrderNumber(newOrderNumber);
 
-    const snapshot: OrderSnapshot = {
-      cart: JSON.parse(JSON.stringify(cart)),
-      cartTotal,
-      deliveryFee,
-      finalTotal,
-      formData: { ...formData },
-      selectedArea,
-      paymentMethod,
-    };
-    setOrderSnapshot(snapshot);
-    setOrderPlaced(true);
-    clearCart();
+    try {
+      const { data: orderData, error: orderError } = await supabase
+        .from("orders")
+        .insert({
+          order_number: newOrderNumber,
+          customer_name: formData.name,
+          customer_phone: formData.phone,
+          customer_whatsapp: formData.whatsapp || null,
+          city: formData.city,
+          area_id: Number(formData.areaId),
+          address: formData.address,
+          landmark: formData.landmark || null,
+          notes: formData.notes || null,
+          payment_method: paymentMethod,
+          products_total: cartTotal,
+          delivery_fee: deliveryFee,
+          final_total: finalTotal,
+          status: "new",
+          whatsapp_sent: false,
+        })
+        .select()
+        .single();
+
+      if (orderError) throw orderError;
+
+      const orderItems = cart.map((item) => ({
+        order_id: orderData.id,
+        product_name: item.name,
+        price: item.price,
+        sale_type: item.saleType,
+        quantity: item.quantity,
+        weight: item.weight || null,
+        total_price: item.totalPrice,
+      }));
+
+      const { error: itemsError } = await supabase.from("order_items").insert(orderItems);
+      if (itemsError) throw itemsError;
+
+      const currentPaymentMethod = paymentMethods.find((p) => p.id === paymentMethod);
+      const snapshot: OrderSnapshot = {
+        cart: JSON.parse(JSON.stringify(cart)),
+        cartTotal,
+        deliveryFee,
+        finalTotal,
+        formData: { ...formData },
+        selectedArea,
+        paymentMethod,
+        paymentMethodLabel: currentPaymentMethod?.name || "",
+        orderId: orderData.id,
+      };
+      setOrderSnapshot(snapshot);
+      setOrderNumber(newOrderNumber);
+      setOrderPlaced(true);
+      clearCart();
+    } catch (err: any) {
+      console.error("❌ خطأ في حفظ الطلب:", err);
+      alert(`عذراً، حدث خطأ أثناء حفظ الطلب: ${err.message}`);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleSendWhatsApp = () => {
-    if (!orderSnapshot) return;
+  const handleSendWhatsApp = async () => {
+    if (!orderSnapshot || !storeSettings) return;
     const msg = buildWhatsAppMessage(orderSnapshot, orderNumber);
-    const url = `https://wa.me/${STORE_WHATSAPP}?text=${encodeURIComponent(msg)}`;
+    const url = `https://wa.me/${storeSettings.whatsapp_number}?text=${encodeURIComponent(msg)}`;
+    
+    // فتح واتساب أولاً
     window.open(url, "_blank");
+
+    // تحديث حالة الإرسال في قاعدة البيانات
+    try {
+      const { error } = await supabase
+        .from("orders")
+        .update({ whatsapp_sent: true })
+        .eq("id", orderSnapshot.orderId);
+      
+      if (error) {
+        console.error("خطأ في تحديث حالة الإرسال:", error);
+      } else {
+        setWhatsappSent(true);
+      }
+    } catch (e) {
+      console.error("خطأ غير متوقع:", e);
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-sidr-cream">
+        <Loader2 className="w-10 h-10 text-sidr-green animate-spin" />
+      </div>
+    );
+  }
 
   if (orderPlaced && orderSnapshot) {
     return (
@@ -169,16 +288,28 @@ export default function CheckoutPage() {
             <p className="text-sm">عدد المنتجات: <span className="font-bold">{orderSnapshot.cart.length}</span></p>
             <p className="text-sm">الإجمالي: <span className="font-bold text-sidr-brown">{orderSnapshot.finalTotal.toFixed(2)} جنيه</span></p>
           </div>
-          <p className="text-sm text-gray-500 mb-6 leading-relaxed">
-            لإتمام الطلب، يرجى إرسال تفاصيل الطلب إلى واتساب المتجر بالضغط على الزر أدناه.
-          </p>
-          <button
-            onClick={handleSendWhatsApp}
-            className="w-full bg-[#25D366] hover:bg-[#1eb356] text-white py-4 rounded-xl font-bold text-lg transition flex items-center justify-center gap-3 shadow-md mb-3"
-          >
-            <MessageCircle className="w-6 h-6" />
-            إرسال الطلب إلى واتساب
-          </button>
+          
+          {whatsappSent ? (
+            <div className="bg-green-50 border-2 border-green-500 rounded-xl p-4 mb-6 flex items-center gap-3">
+              <CheckCircle2 className="w-6 h-6 text-green-600 flex-shrink-0" />
+              <p className="text-green-700 text-sm font-semibold text-right">
+                تم إرسال الطلب إلى واتساب المتجر بنجاح. سنتواصل معك قريباً لتأكيد الطلب.
+              </p>
+            </div>
+          ) : (
+            <>
+              <p className="text-sm text-gray-500 mb-6 leading-relaxed">
+                تم حفظ طلبك بنجاح. لإتمام الطلب، يرجى إرسال تفاصيل الطلب إلى واتساب المتجر بالضغط على الزر أدناه.
+              </p>
+              <button
+                onClick={handleSendWhatsApp}
+                className="w-full bg-[#25D366] hover:bg-[#1eb356] text-white py-4 rounded-xl font-bold text-lg transition flex items-center justify-center gap-3 shadow-md mb-3"
+              >
+                <MessageCircle className="w-6 h-6" /> إرسال الطلب إلى واتساب
+              </button>
+            </>
+          )}
+          
           <Link href="/" className="block w-full bg-sidr-cream text-sidr-green py-3 rounded-xl font-bold hover:bg-sidr-light-green transition">
             العودة للرئيسية
           </Link>
@@ -209,22 +340,18 @@ export default function CheckoutPage() {
 
       <form ref={formRef} onSubmit={handleSubmit} className="container mx-auto px-4 py-6 max-w-3xl" noValidate>
         
-        {/* رسالة الخطأ العامة */}
         {showErrorBanner && Object.keys(errors).length > 0 && (
-          <div className="bg-red-50 border-2 border-red-500 rounded-2xl p-4 mb-6 flex items-start gap-3 animate-pulse">
+          <div className="bg-red-50 border-2 border-red-500 rounded-2xl p-4 mb-6 flex items-start gap-3">
             <AlertCircle className="w-6 h-6 text-red-500 flex-shrink-0 mt-0.5" />
             <div>
               <p className="font-bold text-red-700 mb-1">الرجاء إكمال البيانات التالية:</p>
               <ul className="text-sm text-red-600 list-disc list-inside">
-                {Object.values(errors).map((err, i) => (
-                  <li key={i}>{err}</li>
-                ))}
+                {Object.values(errors).map((err, i) => (<li key={i}>{err}</li>))}
               </ul>
             </div>
           </div>
         )}
 
-        {/* بيانات العميل */}
         <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
           <h2 className="text-lg font-bold text-sidr-green mb-4 flex items-center gap-2"><User className="w-5 h-5" /> بيانات العميل</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -260,9 +387,9 @@ export default function CheckoutPage() {
               <select ref={areaRef} name="areaId" value={formData.areaId} onChange={handleChange}
                 className={`w-full px-4 py-2 rounded-xl border-2 ${errors.areaId ? "border-red-500 bg-red-50" : "border-gray-200"} focus:border-sidr-green focus:outline-none bg-white transition`}>
                 <option value="">اختر المنطقة</option>
-                {DELIVERY_AREAS.filter((a) => a.isActive).map((area) => (
+                {deliveryAreas.map((area) => (
                   <option key={area.id} value={area.id}>
-                    {area.name} {FREE_DELIVERY ? "(مجاني)" : `- ${area.fee} جنيه`}
+                    {area.name} {freeDelivery ? "(مجاني)" : `- ${area.fee} جنيه`}
                   </option>
                 ))}
               </select>
@@ -290,31 +417,25 @@ export default function CheckoutPage() {
           </div>
         </div>
 
-        {/* طريقة الدفع */}
         <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
           <h2 className="text-lg font-bold text-sidr-green mb-4 flex items-center gap-2"><CreditCard className="w-5 h-5" /> طريقة الدفع</h2>
           <div className="space-y-3">
-            {PAYMENT_METHODS.filter((p) => p.isActive).map((method) => {
-              const Icon = method.icon;
-              return (
-                <label key={method.id}
-                  className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition ${
-                    paymentMethod === method.id ? "border-sidr-green bg-sidr-light-green/40" : "border-gray-200 hover:border-sidr-green/40"
-                  }`}>
-                  <input type="radio" name="payment" value={method.id} checked={paymentMethod === method.id}
-                    onChange={(e) => setPaymentMethod(e.target.value)} className="w-4 h-4 accent-sidr-green" />
-                  <Icon className="w-5 h-5 text-sidr-green" />
-                  <div className="flex-grow">
-                    <p className="font-bold text-sm">{method.name}</p>
-                    <p className="text-xs text-gray-500">{method.description}</p>
-                  </div>
-                </label>
-              );
-            })}
+            {paymentMethods.map((method) => (
+              <label key={method.id}
+                className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition ${
+                  paymentMethod === method.id ? "border-sidr-green bg-sidr-light-green/40" : "border-gray-200 hover:border-sidr-green/40"
+                }`}>
+                <input type="radio" name="payment" value={method.id} checked={paymentMethod === method.id}
+                  onChange={(e) => setPaymentMethod(e.target.value)} className="w-4 h-4 accent-sidr-green" />
+                <div className="flex-grow">
+                  <p className="font-bold text-sm">{method.name}</p>
+                  <p className="text-xs text-gray-500">{method.description}</p>
+                </div>
+              </label>
+            ))}
           </div>
         </div>
 
-        {/* ملخص الطلب */}
         <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
           <h2 className="text-lg font-bold text-sidr-green mb-4 flex items-center gap-2"><MapPin className="w-5 h-5" /> ملخص الطلب</h2>
           <div className="space-y-3 mb-4">
@@ -330,7 +451,7 @@ export default function CheckoutPage() {
           <div className="border-t border-gray-100 pt-4 space-y-2 text-sm">
             <div className="flex justify-between text-gray-600"><span>إجمالي المنتجات</span><span>{cartTotal.toFixed(2)} جنيه</span></div>
             <div className="flex justify-between text-gray-600">
-              <span>رسوم التوصيل</span>
+              <span>رسوم التوصيل {freeDelivery && "(مجاني)"}</span>
               <span>{selectedArea ? `${deliveryFee.toFixed(2)} جنيه` : "اختر المنطقة"}</span>
             </div>
             <div className="flex justify-between font-bold text-lg pt-2 border-t border-gray-100">
@@ -340,9 +461,13 @@ export default function CheckoutPage() {
           </div>
         </div>
 
-        <button type="submit"
-          className="w-full bg-sidr-green hover:bg-sidr-green/90 text-white py-4 rounded-xl font-bold text-lg transition shadow-md">
-          تأكيد الطلب
+        <button type="submit" disabled={isSubmitting}
+          className="w-full bg-sidr-green hover:bg-sidr-green/90 disabled:bg-gray-400 text-white py-4 rounded-xl font-bold text-lg transition shadow-md flex items-center justify-center gap-2">
+          {isSubmitting ? (
+            <><Loader2 className="w-5 h-5 animate-spin" /> جاري حفظ الطلب...</>
+          ) : (
+            "تأكيد الطلب"
+          )}
         </button>
       </form>
     </div>

@@ -32,30 +32,59 @@ export default function CartPage() {
       <div className="container mx-auto px-4 py-6 max-w-3xl">
         <div className="space-y-4 mb-6">
           {cart.map((item) => (
-            <div key={item.id} className="bg-white rounded-2xl p-4 shadow-sm flex gap-4">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={item.image} alt={item.name} className="w-20 h-20 md:w-24 md:h-24 rounded-xl object-cover" />
-              <div className="flex-grow">
-                <div className="flex justify-between items-start mb-2">
-                  <h3 className="font-bold text-sidr-green text-sm md:text-base">{item.name}</h3>
-                  <button onClick={() => removeFromCart(item.id)} className="p-1 text-red-500 hover:bg-red-50 rounded-full transition">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-                <p className="text-xs text-gray-500 mb-2">
-                  {item.saleType === "weight" ? `${item.weight} جم` : `${item.price} جنيه / قطعة`}
-                </p>
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-2 bg-sidr-cream rounded-full p-1">
-                    <button onClick={() => updateQuantity(item.id, item.quantity - 1)} className="w-7 h-7 flex items-center justify-center rounded-full bg-white shadow-sm hover:bg-sidr-light-green transition">
-                      <Minus className="w-3 h-3" />
-                    </button>
-                    <span className="w-8 text-center font-bold text-sm">{item.quantity}</span>
-                    <button onClick={() => updateQuantity(item.id, item.quantity + 1)} className="w-7 h-7 flex items-center justify-center rounded-full bg-white shadow-sm hover:bg-sidr-light-green transition">
-                      <Plus className="w-3 h-3" />
+            <div key={item.id} className="bg-white rounded-2xl p-4 shadow-sm">
+              <div className="flex gap-4">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={item.image} alt={item.name} className="w-20 h-20 md:w-24 md:h-24 rounded-xl object-cover flex-shrink-0" />
+                <div className="flex-grow min-w-0">
+                  <div className="flex justify-between items-start mb-2">
+                    <h3 className="font-bold text-sidr-green text-sm md:text-base truncate">{item.name}</h3>
+                    <button onClick={() => removeFromCart(item.id)} className="p-1 text-red-500 hover:bg-red-50 rounded-full transition flex-shrink-0">
+                      <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
-                  <span className="font-bold text-sidr-brown">{item.totalPrice.toFixed(2)} جنيه</span>
+                  <p className="text-xs text-gray-500 mb-3">
+                    {item.saleType === "weight" 
+                      ? `${item.price} جنيه / كجم` 
+                      : `${item.price} جنيه / قطعة`}
+                  </p>
+                  
+                  <div className="flex justify-between items-center flex-wrap gap-2">
+                    {/* للمنتجات بالوزن: عرض أزرار تعديل الوزن */}
+                    {item.saleType === "weight" ? (
+                      <div className="flex items-center gap-2 bg-sidr-cream rounded-full p-1">
+                        <button 
+                          onClick={() => updateWeight(item.id, Math.max(50, item.weight - 50))} 
+                          disabled={item.weight <= 50}
+                          className="w-8 h-8 flex items-center justify-center rounded-full bg-white shadow-sm hover:bg-sidr-light-green transition disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          <Minus className="w-3 h-3" />
+                        </button>
+                        <span className="min-w-[70px] text-center font-bold text-sm px-2">
+                          {item.weight >= 1000 ? `${item.weight / 1000} كجم` : `${item.weight} جم`}
+                        </span>
+                        <button 
+                          onClick={() => updateWeight(item.id, item.weight + 50)} 
+                          className="w-8 h-8 flex items-center justify-center rounded-full bg-white shadow-sm hover:bg-sidr-light-green transition"
+                        >
+                          <Plus className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      // للمنتجات بالقطعة: عرض أزرار تعديل الكمية
+                      <div className="flex items-center gap-2 bg-sidr-cream rounded-full p-1">
+                        <button onClick={() => updateQuantity(item.id, item.quantity - 1)} className="w-8 h-8 flex items-center justify-center rounded-full bg-white shadow-sm hover:bg-sidr-light-green transition">
+                          <Minus className="w-3 h-3" />
+                        </button>
+                        <span className="w-8 text-center font-bold text-sm">{item.quantity}</span>
+                        <button onClick={() => updateQuantity(item.id, item.quantity + 1)} className="w-8 h-8 flex items-center justify-center rounded-full bg-white shadow-sm hover:bg-sidr-light-green transition">
+                          <Plus className="w-3 h-3" />
+                        </button>
+                      </div>
+                    )}
+                    
+                    <span className="font-bold text-sidr-brown text-lg">{item.totalPrice.toFixed(2)} جنيه</span>
+                  </div>
                 </div>
               </div>
             </div>

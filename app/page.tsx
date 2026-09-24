@@ -1,31 +1,56 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import { ShoppingCart, Leaf, Menu, X, Phone, MessageCircle, Search } from "lucide-react";
+import { ShoppingCart, Leaf, Menu, X, Phone, MessageCircle, Search, Loader2 } from "lucide-react";
 import { useCart } from "./context/CartContext";
 import WeightModal from "./components/WeightModal";
-
-const mockProducts = [
-  { id: 1, name: "زيت حبة البركة الأصلي", price: 120, saleType: "piece", category: "زيوت", image: "https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?auto=format&fit=crop&q=80&w=400" },
-  { id: 2, name: "عسل سدر جبلي", price: 350, saleType: "piece", category: "عسل", image: "https://images.unsplash.com/photo-1587049352847-4d4b1c1e6f7a?auto=format&fit=crop&q=80&w=400" },
-  { id: 3, name: "أعشاب البابونج المجففة", price: 80, saleType: "weight", category: "أعشاب", image: "https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&q=80&w=400" },
-  { id: 4, name: "زيت الزيتون البكر", price: 200, saleType: "piece", category: "زيوت", image: "https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?auto=format&fit=crop&q=80&w=400" },
-  { id: 5, name: "مرمرية (بردقوش)", price: 60, saleType: "weight", category: "أعشاب", image: "https://images.unsplash.com/photo-1515586000433-45406d8e6662?auto=format&fit=crop&q=80&w=400" },
-  { id: 6, name: "زيت جوز الهند العضوي", price: 150, saleType: "piece", category: "زيوت", image: "https://images.unsplash.com/photo-1620916566398-39f1143ab7be?auto=format&fit=crop&q=80&w=400" },
-];
-
-const categories = ["الكل", "زيوت", "عسل", "أعشاب", "مكسرات"];
+import { supabase } from "./lib/supabase";
 
 export default function Home() {
   const { cart, addToCart, cartCount } = useCart();
+  const [products, setProducts] = useState<any[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
   const [selectedCategory, setSelectedCategory] = useState("الكل");
-  const [searchQuery, setSearchQuery] = useState(""); // حالة البحث
+  const [searchQuery, setSearchQuery] = useState("");
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [weightProduct, setWeightProduct] = useState<any>(null);
 
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        setLoading(true);
+        const { data: cats, error: catError } = await supabase
+          .from("categories")
+          .select("*")
+          .order("sort_order", { ascending: true });
+        
+        if (catError) throw catError;
+        setCategories(cats || []);
+
+        const { data: prods, error: prodError } = await supabase
+          .from("products")
+          .select("*")
+          .eq("is_available", true)
+          .order("sort_order", { ascending: true });
+        
+        if (prodError) throw prodError;
+        setProducts(prods || []);
+      } catch (err: any) {
+        console.error("❌ خطأ في جلب البيانات:", err);
+        setError(err.message || "حدث خطأ أثناء الاتصال بقاعدة البيانات");
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchData();
+  }, []);
+
   const handleAddToCart = (product: any) => {
-    if (product.saleType === "weight") {
+    if (product.sale_type === "weight") {
       setWeightProduct(product);
     } else {
       const existingItem = cart.find(i => i.productId === product.id);
@@ -36,19 +61,39 @@ export default function Home() {
         if (!confirmAdd) return;
       }
       addToCart({
-        productId: product.id, name: product.name, price: product.price,
-        saleType: "piece", image: product.image, quantity: 1, weight: 0,
+        productId: product.id, name: product.name, price: Number(product.price),
+        saleType: "piece", image: product.image_url, quantity: 1, weight: 0,
       });
       alert(`تمت إضافة ${product.name} إلى السلة`);
     }
   };
 
-  // تصفية المنتجات بناءً على التصنيف + نص البحث
-  const filteredProducts = mockProducts.filter((p) => {
-    const matchesCategory = selectedCategory === "الكل" || p.category === selectedCategory;
+  const filteredProducts = products.filter((p) => {
+    const matchesCategory = selectedCategory === "الكل" || 
+      p.category_id === categories.find(c => c.name === selectedCategory)?.id;
     const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase().trim());
     return matchesCategory && matchesSearch;
   });
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-sidr-cream">
+        <Loader2 className="w-12 h-12 text-sidr-green animate-spin mb-4" />
+        <p className="text-sidr-green font-bold">جاري تحميل المنتجات...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-sidr-cream px-4 text-center">
+        <div className="bg-red-50 border-2 border-red-500 rounded-2xl p-6 max-w-md">
+          <p className="text-red-700 font-bold mb-2">عذراً، حدث خطأ</p>
+          <p className="text-red-600 text-sm">{error}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -87,7 +132,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* قسم البحث الجديد */}
       <section className="pt-8 px-4">
         <div className="container mx-auto max-w-xl">
           <div className="relative">
@@ -100,10 +144,7 @@ export default function Home() {
             />
             <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
             {searchQuery && (
-              <button 
-                onClick={() => setSearchQuery("")}
-                className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
+              <button onClick={() => setSearchQuery("")} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                 <X className="w-4 h-4" />
               </button>
             )}
@@ -113,11 +154,15 @@ export default function Home() {
 
       <section className="py-6 px-4 overflow-x-auto whitespace-nowrap">
         <div className="container mx-auto flex gap-3 justify-start md:justify-center">
+          <button onClick={() => setSelectedCategory("الكل")}
+            className={`px-6 py-2 rounded-full text-sm font-semibold transition ${
+              selectedCategory === "الكل" ? "bg-sidr-green text-white shadow-md" : "bg-white text-sidr-green border border-sidr-green hover:bg-sidr-light-green"
+            }`}>الكل</button>
           {categories.map((cat) => (
-            <button key={cat} onClick={() => setSelectedCategory(cat)}
+            <button key={cat.id} onClick={() => setSelectedCategory(cat.name)}
               className={`px-6 py-2 rounded-full text-sm font-semibold transition ${
-                selectedCategory === cat ? "bg-sidr-green text-white shadow-md" : "bg-white text-sidr-green border border-sidr-green hover:bg-sidr-light-green"
-              }`}>{cat}</button>
+                selectedCategory === cat.name ? "bg-sidr-green text-white shadow-md" : "bg-white text-sidr-green border border-sidr-green hover:bg-sidr-light-green"
+              }`}>{cat.name}</button>
           ))}
         </div>
       </section>
@@ -128,10 +173,7 @@ export default function Home() {
             <div className="text-center py-16">
               <Search className="w-16 h-16 text-gray-300 mx-auto mb-4" />
               <p className="text-gray-500 text-lg">لا توجد منتجات مطابقة لبحثك</p>
-              <button 
-                onClick={() => { setSearchQuery(""); setSelectedCategory("الكل"); }}
-                className="mt-4 text-sidr-green font-bold hover:underline"
-              >
+              <button onClick={() => { setSearchQuery(""); setSelectedCategory("الكل"); }} className="mt-4 text-sidr-green font-bold hover:underline">
                 عرض كل المنتجات
               </button>
             </div>
@@ -141,8 +183,8 @@ export default function Home() {
                 <div key={product.id} className="bg-white rounded-2xl shadow-sm hover:shadow-md transition overflow-hidden border border-gray-100 flex flex-col">
                   <div className="h-40 md:h-48 bg-gray-100 relative">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
-                    {product.saleType === "weight" && (
+                    <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
+                    {product.sale_type === "weight" && (
                       <span className="absolute top-2 right-2 bg-sidr-brown text-white text-xs px-2 py-1 rounded-md">يباع بالوزن</span>
                     )}
                   </div>
@@ -151,7 +193,7 @@ export default function Home() {
                     <div className="mt-auto">
                       <p className="text-sidr-brown font-bold text-lg mb-3">
                         {product.price} جنيه
-                        <span className="text-xs text-gray-500 font-normal mr-1">{product.saleType === "weight" ? "/ كجم" : "/ قطعة"}</span>
+                        <span className="text-xs text-gray-500 font-normal mr-1">{product.sale_type === "weight" ? "/ كجم" : "/ قطعة"}</span>
                       </p>
                       <button onClick={() => handleAddToCart(product)}
                         className="w-full bg-sidr-green hover:bg-sidr-green/90 text-white py-2 rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2">
@@ -193,10 +235,13 @@ export default function Home() {
         </div>
       </footer>
 
+      {/* WeightModal - في المكان الصحيح الآن (أسفل الملف، قبل إغلاق div الرئيسي) */}
       {weightProduct && (
         <WeightModal
           productName={weightProduct.name}
-          pricePerKg={weightProduct.price}
+          pricePerKg={Number(weightProduct.price)}
+          minWeight={weightProduct.min_weight || 50}
+          weightIncrement={weightProduct.weight_increment || 50}
           onConfirm={(weight) => {
             const existingItem = cart.find(i => i.productId === weightProduct.id && i.weight === weight);
             if (existingItem) {
@@ -206,8 +251,8 @@ export default function Home() {
               if (!confirmAdd) return;
             }
             addToCart({
-              productId: weightProduct.id, name: weightProduct.name, price: weightProduct.price,
-              saleType: "weight", image: weightProduct.image, quantity: 1, weight,
+              productId: weightProduct.id, name: weightProduct.name, price: Number(weightProduct.price),
+              saleType: "weight", image: weightProduct.image_url, quantity: 1, weight,
             });
             alert(`تمت إضافة ${weightProduct.name} (${weight} جم) إلى السلة`);
           }}
