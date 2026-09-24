@@ -91,9 +91,32 @@ export default function CheckoutPage() {
     return msg;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validate()) return;
+    
+    // التحقق من صحة البيانات وإظهار تنبيه إذا كان هناك خطأ
+    if (!validate()) {
+      alert("الرجاء تعبئة جميع الحقول المطلوبة بشكل صحيح. تأكد من اختيار منطقة التوصيل وكتابة العنوان بالكامل.");
+      return;
+    }
+
+    const newOrderNumber = `DS-${Math.floor(100000 + Math.random() * 900000)}`;
+    setOrderNumber(newOrderNumber);
+
+    // حفظ لقطة كاملة من بيانات الطلب قبل تفريغ السلة
+    const snapshot: OrderSnapshot = {
+      cart: JSON.parse(JSON.stringify(cart)),
+      cartTotal,
+      deliveryFee,
+      finalTotal,
+      formData: { ...formData },
+      selectedArea,
+      paymentMethod,
+    };
+    setOrderSnapshot(snapshot);
+    setOrderPlaced(true);
+    clearCart();
+  };
 
     const newOrderNumber = `DS-${Math.floor(100000 + Math.random() * 900000)}`;
     setOrderNumber(newOrderNumber);
