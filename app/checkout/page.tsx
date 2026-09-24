@@ -1,13 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import Link from "next/link";
 import { useCart, CartItem } from "../context/CartContext";
-import { ArrowRight, CheckCircle2, MessageCircle, MapPin, Phone, User, CreditCard, Truck } from "lucide-react";
+import { ArrowRight, CheckCircle2, MessageCircle, MapPin, Phone, User, CreditCard, Truck, AlertCircle } from "lucide-react";
 
-// إعدادات المتجر
-const STORE_WHATSAPP = "201559077281"; // رقم واتساب المتجر (بدون + وبدون مسافات)
-const FREE_DELIVERY = false; // تغيير إلى true لتفعيل التوصيل المجاني الشامل
+const STORE_WHATSAPP = "201559077281";
+const FREE_DELIVERY = false;
 
 const DELIVERY_AREAS = [
   { id: 1, name: "المنطقة الأولى - وسط البلد", fee: 20, isActive: true },
@@ -42,6 +41,15 @@ export default function CheckoutPage() {
   const [orderNumber, setOrderNumber] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [orderSnapshot, setOrderSnapshot] = useState<OrderSnapshot | null>(null);
+  const [showErrorBanner, setShowErrorBanner] = useState(false);
+
+  // مراجع للتمرير إلى أول حقل به خطأ
+  const formRef = useRef<HTMLFormElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
+  const phoneRef = useRef<HTMLInputElement>(null);
+  const cityRef = useRef<HTMLInputElement>(null);
+  const areaRef = useRef<HTMLSelectElement>(null);
+  const addressRef = useRef<HTMLInputElement>(null);
 
   const selectedArea = DELIVERY_AREAS.find((a) => a.id === Number(formData.areaId));
   const deliveryFee = FREE_DELIVERY ? 0 : selectedArea ? selectedArea.fee : 0;
@@ -49,7 +57,9 @@ export default function CheckoutPage() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
-    if (errors[e.target.name]) setErrors({ ...errors, [e.target.name]: "" });
+    if (errors[e.target.name]) {
+      setErrors({ ...errors, [e.target.name]: "" });
+    }
   };
 
   const validate = () => {
@@ -60,7 +70,22 @@ export default function CheckoutPage() {
     if (!formData.areaId) newErrors.areaId = "اختر منطقة التوصيل";
     if (!formData.address.trim()) newErrors.address = "العنوان التفصيلي مطلوب";
     setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    return newErrors;
+  };
+
+  const scrollToFirstError = (errs: Record<string, string>) => {
+    // الترتيب حسب ظهور الحقول في الصفحة
+    const fieldOrder = ["name", "phone", "city", "areaId", "address"];
+    for (const field of fieldOrder) {
+      if (errs[field]) {
+        const refMap: Record<string, any> = {
+          name: nameRef, phone: phoneRef, city: cityRef, areaId: areaRef, address: addressRef,
+        };
+        refMap[field]?.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+        refMap[field]?.current?.focus();
+        return;
+      }
+    }
   };
 
   const buildWhatsAppMessage = (snapshot: OrderSnapshot, orderNum: string) => {
@@ -91,37 +116,25 @@ export default function CheckoutPage() {
     return msg;
   };
 
-    const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // التحقق من صحة البيانات وإظهار تنبيه إذا كان هناك خطأ
-    if (!validate()) {
-      alert("الرجاء تعبئة جميع الحقول المطلوبة بشكل صحيح. تأكد من اختيار منطقة التوصيل وكتابة العنوان بالكامل.");
+    setShowErrorBanner(false);
+
+    const validationErrors = validate();
+
+    if (Object.keys(validationErrors).length > 0) {
+      setShowErrorBanner(true);
+      // تأخير بسيط لضمان ظهور رسائل الخطأ في الـ DOM قبل التمرير
+      setTimeout(() => {
+        scrollToFirstError(validationErrors);
+        formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 100);
       return;
     }
 
     const newOrderNumber = `DS-${Math.floor(100000 + Math.random() * 900000)}`;
     setOrderNumber(newOrderNumber);
 
-    // حفظ لقطة كاملة من بيانات الطلب قبل تفريغ السلة
-    const snapshot: OrderSnapshot = {
-      cart: JSON.parse(JSON.stringify(cart)),
-      cartTotal,
-      deliveryFee,
-      finalTotal,
-      formData: { ...formData },
-      selectedArea,
-      paymentMethod,
-    };
-    setOrderSnapshot(snapshot);
-    setOrderPlaced(true);
-    clearCart();
-  };
-
-    const newOrderNumber = `DS-${Math.floor(100000 + Math.random() * 900000)}`;
-    setOrderNumber(newOrderNumber);
-
-    // حفظ لقطة كاملة من بيانات الطلب قبل تفريغ السلة
     const snapshot: OrderSnapshot = {
       cart: JSON.parse(JSON.stringify(cart)),
       cartTotal,
@@ -143,7 +156,6 @@ export default function CheckoutPage() {
     window.open(url, "_blank");
   };
 
-  // شاشة تأكيد الطلب
   if (orderPlaced && orderSnapshot) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center px-4 bg-sidr-cream text-center">
@@ -152,13 +164,11 @@ export default function CheckoutPage() {
           <h2 className="text-2xl font-bold text-sidr-green mb-2">تم استلام طلبك!</h2>
           <p className="text-gray-600 mb-4">رقم طلبك هو:</p>
           <p className="text-3xl font-bold text-sidr-brown mb-6 tracking-wider">{orderNumber}</p>
-          
           <div className="bg-sidr-cream rounded-xl p-4 mb-6 text-right">
             <p className="text-sm text-gray-600 mb-2">ملخص سريع:</p>
             <p className="text-sm">عدد المنتجات: <span className="font-bold">{orderSnapshot.cart.length}</span></p>
             <p className="text-sm">الإجمالي: <span className="font-bold text-sidr-brown">{orderSnapshot.finalTotal.toFixed(2)} جنيه</span></p>
           </div>
-
           <p className="text-sm text-gray-500 mb-6 leading-relaxed">
             لإتمام الطلب، يرجى إرسال تفاصيل الطلب إلى واتساب المتجر بالضغط على الزر أدناه.
           </p>
@@ -197,42 +207,58 @@ export default function CheckoutPage() {
         </div>
       </header>
 
-      <form onSubmit={handleSubmit} className="container mx-auto px-4 py-6 max-w-3xl">
+      <form ref={formRef} onSubmit={handleSubmit} className="container mx-auto px-4 py-6 max-w-3xl" noValidate>
+        
+        {/* رسالة الخطأ العامة */}
+        {showErrorBanner && Object.keys(errors).length > 0 && (
+          <div className="bg-red-50 border-2 border-red-500 rounded-2xl p-4 mb-6 flex items-start gap-3 animate-pulse">
+            <AlertCircle className="w-6 h-6 text-red-500 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold text-red-700 mb-1">الرجاء إكمال البيانات التالية:</p>
+              <ul className="text-sm text-red-600 list-disc list-inside">
+                {Object.values(errors).map((err, i) => (
+                  <li key={i}>{err}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
+
         {/* بيانات العميل */}
         <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
           <h2 className="text-lg font-bold text-sidr-green mb-4 flex items-center gap-2"><User className="w-5 h-5" /> بيانات العميل</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-semibold mb-1">الاسم <span className="text-red-500">*</span></label>
-              <input type="text" name="name" value={formData.name} onChange={handleChange}
-                className={`w-full px-4 py-2 rounded-xl border ${errors.name ? "border-red-500" : "border-gray-200"} focus:border-sidr-green focus:outline-none`}
+              <input ref={nameRef} type="text" name="name" value={formData.name} onChange={handleChange}
+                className={`w-full px-4 py-2 rounded-xl border-2 ${errors.name ? "border-red-500 bg-red-50" : "border-gray-200"} focus:border-sidr-green focus:outline-none transition`}
                 placeholder="اسمك الكامل" />
-              {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
+              {errors.name && <p className="text-red-500 text-xs mt-1 font-semibold">{errors.name}</p>}
             </div>
             <div>
               <label className="block text-sm font-semibold mb-1">رقم الهاتف <span className="text-red-500">*</span></label>
-              <input type="tel" name="phone" value={formData.phone} onChange={handleChange}
-                className={`w-full px-4 py-2 rounded-xl border ${errors.phone ? "border-red-500" : "border-gray-200"} focus:border-sidr-green focus:outline-none`}
+              <input ref={phoneRef} type="tel" name="phone" value={formData.phone} onChange={handleChange}
+                className={`w-full px-4 py-2 rounded-xl border-2 ${errors.phone ? "border-red-500 bg-red-50" : "border-gray-200"} focus:border-sidr-green focus:outline-none transition`}
                 placeholder="01xxxxxxxxx" />
-              {errors.phone && <p className="text-red-500 text-xs mt-1">{errors.phone}</p>}
+              {errors.phone && <p className="text-red-500 text-xs mt-1 font-semibold">{errors.phone}</p>}
             </div>
             <div>
               <label className="block text-sm font-semibold mb-1">رقم الواتساب (اختياري)</label>
               <input type="tel" name="whatsapp" value={formData.whatsapp} onChange={handleChange}
-                className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-sidr-green focus:outline-none"
+                className="w-full px-4 py-2 rounded-xl border-2 border-gray-200 focus:border-sidr-green focus:outline-none transition"
                 placeholder="01xxxxxxxxx" />
             </div>
             <div>
               <label className="block text-sm font-semibold mb-1">المدينة <span className="text-red-500">*</span></label>
-              <input type="text" name="city" value={formData.city} onChange={handleChange}
-                className={`w-full px-4 py-2 rounded-xl border ${errors.city ? "border-red-500" : "border-gray-200"} focus:border-sidr-green focus:outline-none`}
+              <input ref={cityRef} type="text" name="city" value={formData.city} onChange={handleChange}
+                className={`w-full px-4 py-2 rounded-xl border-2 ${errors.city ? "border-red-500 bg-red-50" : "border-gray-200"} focus:border-sidr-green focus:outline-none transition`}
                 placeholder="مثال: القاهرة" />
-              {errors.city && <p className="text-red-500 text-xs mt-1">{errors.city}</p>}
+              {errors.city && <p className="text-red-500 text-xs mt-1 font-semibold">{errors.city}</p>}
             </div>
             <div className="md:col-span-2">
               <label className="block text-sm font-semibold mb-1">منطقة التوصيل <span className="text-red-500">*</span></label>
-              <select name="areaId" value={formData.areaId} onChange={handleChange}
-                className={`w-full px-4 py-2 rounded-xl border ${errors.areaId ? "border-red-500" : "border-gray-200"} focus:border-sidr-green focus:outline-none bg-white`}>
+              <select ref={areaRef} name="areaId" value={formData.areaId} onChange={handleChange}
+                className={`w-full px-4 py-2 rounded-xl border-2 ${errors.areaId ? "border-red-500 bg-red-50" : "border-gray-200"} focus:border-sidr-green focus:outline-none bg-white transition`}>
                 <option value="">اختر المنطقة</option>
                 {DELIVERY_AREAS.filter((a) => a.isActive).map((area) => (
                   <option key={area.id} value={area.id}>
@@ -240,25 +266,25 @@ export default function CheckoutPage() {
                   </option>
                 ))}
               </select>
-              {errors.areaId && <p className="text-red-500 text-xs mt-1">{errors.areaId}</p>}
+              {errors.areaId && <p className="text-red-500 text-xs mt-1 font-semibold">{errors.areaId}</p>}
             </div>
             <div className="md:col-span-2">
               <label className="block text-sm font-semibold mb-1">العنوان التفصيلي <span className="text-red-500">*</span></label>
-              <input type="text" name="address" value={formData.address} onChange={handleChange}
-                className={`w-full px-4 py-2 rounded-xl border ${errors.address ? "border-red-500" : "border-gray-200"} focus:border-sidr-green focus:outline-none`}
+              <input ref={addressRef} type="text" name="address" value={formData.address} onChange={handleChange}
+                className={`w-full px-4 py-2 rounded-xl border-2 ${errors.address ? "border-red-500 bg-red-50" : "border-gray-200"} focus:border-sidr-green focus:outline-none transition`}
                 placeholder="اسم الشارع، رقم العمارة، رقم الشقة" />
-              {errors.address && <p className="text-red-500 text-xs mt-1">{errors.address}</p>}
+              {errors.address && <p className="text-red-500 text-xs mt-1 font-semibold">{errors.address}</p>}
             </div>
             <div>
               <label className="block text-sm font-semibold mb-1">علامة مميزة / أقرب نقطة</label>
               <input type="text" name="landmark" value={formData.landmark} onChange={handleChange}
-                className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-sidr-green focus:outline-none"
+                className="w-full px-4 py-2 rounded-xl border-2 border-gray-200 focus:border-sidr-green focus:outline-none transition"
                 placeholder="مثال: بجوار مسجد النور" />
             </div>
             <div>
               <label className="block text-sm font-semibold mb-1">ملاحظات إضافية</label>
               <input type="text" name="notes" value={formData.notes} onChange={handleChange}
-                className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-sidr-green focus:outline-none"
+                className="w-full px-4 py-2 rounded-xl border-2 border-gray-200 focus:border-sidr-green focus:outline-none transition"
                 placeholder="أي ملاحظات على الطلب" />
             </div>
           </div>
