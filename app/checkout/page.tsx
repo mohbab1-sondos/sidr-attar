@@ -20,6 +20,9 @@ interface StoreSettings {
   vodafone_cash_number: string | null;
   instapay_enabled: boolean;
   instapay_account: string | null;
+  min_order_value: number | null;
+  is_open: boolean;
+  closed_message: string | null;
 }
 
 interface OrderSnapshot {
@@ -105,6 +108,15 @@ export default function CheckoutPage() {
   const deliveryFee = freeDelivery ? 0 : selectedArea ? selectedArea.fee : 0;
   const finalTotal = cartTotal + deliveryFee;
 
+  // الحد الأدنى للطلب
+  const minOrderValue = storeSettings?.min_order_value || 0;
+  const isBelowMinOrder = minOrderValue > 0 && cartTotal < minOrderValue;
+  const remainingForMin = minOrderValue - cartTotal;
+
+  // حالة المتجر
+  const isStoreOpen = storeSettings?.is_open !== false;
+  const closedMessage = storeSettings?.closed_message || "المتجر مغلق حالياً";
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
     if (errors[e.target.name]) setErrors({ ...errors, [e.target.name]: "" });
@@ -167,6 +179,19 @@ export default function CheckoutPage() {
     e.preventDefault();
     setShowErrorBanner(false);
 
+    // 1. التحقق من أن المتجر مفتوح
+    if (!isStoreOpen) {
+      alert(`⚠️ ${closedMessage}`);
+      return;
+    }
+
+    // 2. التحقق من الحد الأدنى للطلب
+    if (isBelowMinOrder) {
+      alert(`⚠️ الحد الأدنى لقيمة الطلب هو ${minOrderValue} جنيه.\n\nإجمالي سلتك حالياً: ${cartTotal.toFixed(2)} جنيه.\nالمتبقي: ${remainingForMin.toFixed(2)} جنيه.`);
+      return;
+    }
+
+    // 3. التحقق من الحقول
     const validationErrors = validate();
     if (Object.keys(validationErrors).length > 0) {
       setShowErrorBanner(true);
@@ -247,10 +272,8 @@ export default function CheckoutPage() {
     const msg = buildWhatsAppMessage(orderSnapshot, orderNumber);
     const url = `https://wa.me/${storeSettings.whatsapp_number}?text=${encodeURIComponent(msg)}`;
     
-    // فتح واتساب أولاً
     window.open(url, "_blank");
 
-    // تحديث حالة الإرسال في قاعدة البيانات
     try {
       const { error } = await supabase
         .from("orders")
@@ -340,6 +363,30 @@ export default function CheckoutPage() {
 
       <form ref={formRef} onSubmit={handleSubmit} className="container mx-auto px-4 py-6 max-w-3xl" noValidate>
         
+        {/* تحذير: المتجر مغلق */}
+        {!isStoreOpen && (
+          <div className="bg-red-50 border-2 border-red-500 rounded-2xl p-4 mb-6 flex items-start gap-3">
+            <AlertCircle className="w-6 h-6 text-red-500 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold text-red-700 mb-1">المتجر مغلق حالياً</p>
+              <p className="text-sm text-red-600">{closedMessage}</p>
+            </div>
+          </div>
+        )}
+
+        {/* تحذير: الحد الأدنى للطلب */}
+        {isBelowMinOrder && isStoreOpen && (
+          <div className="bg-orange-50 border-2 border-orange-500 rounded-2xl p-4 mb-6 flex items-start gap-3">
+            <AlertCircle className="w-6 h-6 text-orange-500 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold text-orange-700 mb-1">الحد الأدنى للطلب: {minOrderValue} جنيه</p>
+              <p className="text-sm text-orange-600">
+                إجمالي سلتك حالياً: {cartTotal.toFixed(2)} جنيه. أضف منتجات بقيمة <span className="font-bold">{remainingForMin.toFixed(2)} جنيه</span> على الأقل.
+              </p>
+            </div>
+          </div>
+        )}
+
         {showErrorBanner && Object.keys(errors).length > 0 && (
           <div className="bg-red-50 border-2 border-red-500 rounded-2xl p-4 mb-6 flex items-start gap-3">
             <AlertCircle className="w-6 h-6 text-red-500 flex-shrink-0 mt-0.5" />
@@ -450,6 +497,12 @@ export default function CheckoutPage() {
           </div>
           <div className="border-t border-gray-100 pt-4 space-y-2 text-sm">
             <div className="flex justify-between text-gray-600"><span>إجمالي المنتجات</span><span>{cartTotal.toFixed(2)} جنيه</span></div>
+            {minOrderValue > 0 && (
+              <div className="flex justify-between text-xs text-gray-400">
+                <span>الحد الأدنى للطلب</span>
+                <span>{minOrderValue} جنيه</span>
+              </div>
+            )}
             <div className="flex justify-between text-gray-600">
               <span>رسوم التوصيل {freeDelivery && "(مجاني)"}</span>
               <span>{selectedArea ? `${deliveryFee.toFixed(2)} جنيه` : "اختر المنطقة"}</span>
@@ -461,10 +514,15 @@ export default function CheckoutPage() {
           </div>
         </div>
 
-        <button type="submit" disabled={isSubmitting}
-          className="w-full bg-sidr-green hover:bg-sidr-green/90 disabled:bg-gray-400 text-white py-4 rounded-xl font-bold text-lg transition shadow-md flex items-center justify-center gap-2">
+        <button type="submit" 
+          disabled={isSubmitting || isBelowMinOrder || !isStoreOpen}
+          className="w-full bg-sidr-green hover:bg-sidr-green/90 disabled:bg-gray-400 disabled:cursor-not-allowed text-white py-4 rounded-xl font-bold text-lg transition shadow-md flex items-center justify-center gap-2">
           {isSubmitting ? (
             <><Loader2 className="w-5 h-5 animate-spin" /> جاري حفظ الطلب...</>
+          ) : !isStoreOpen ? (
+            "المتجر مغلق حالياً"
+          ) : isBelowMinOrder ? (
+            "الحد الأدنى للطلب لم يتحقق"
           ) : (
             "تأكيد الطلب"
           )}

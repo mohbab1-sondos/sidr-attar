@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
+import { useRoleGuard } from "../hooks/useRoleGuard";
 import { 
   Loader2, Plus, Search, Edit, Trash2, X, Save, 
-  Package, Eye, EyeOff, AlertCircle 
+  Package, Eye, EyeOff 
 } from "lucide-react";
 
 interface Category {
@@ -40,6 +41,7 @@ const emptyProduct = {
 };
 
 export default function AdminProductsPage() {
+  const { authorized } = useRoleGuard(["admin", "sales"]);
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,8 +71,8 @@ export default function AdminProductsPage() {
   };
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (authorized) fetchData();
+  }, [authorized]);
 
   const openAddModal = () => {
     setEditingProduct(null);
@@ -183,6 +185,22 @@ export default function AdminProductsPage() {
     return "عبوة";
   };
 
+  if (authorized === null) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-8 h-8 text-sidr-green animate-spin" />
+      </div>
+    );
+  }
+
+  if (authorized === false) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <p className="text-gray-500">ليس لديك صلاحية الوصول لهذه الصفحة</p>
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 md:p-8">
       <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
@@ -199,7 +217,6 @@ export default function AdminProductsPage() {
         </button>
       </div>
 
-      {/* البحث والفلترة */}
       <div className="bg-white rounded-2xl p-4 mb-6 shadow-sm flex flex-col md:flex-row gap-3">
         <div className="relative flex-1">
           <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -223,7 +240,6 @@ export default function AdminProductsPage() {
         </select>
       </div>
 
-      {/* القائمة */}
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="w-8 h-8 text-sidr-green animate-spin" />
@@ -279,7 +295,6 @@ export default function AdminProductsPage() {
                             ? "bg-green-50 text-green-700 border-green-300 hover:bg-green-100" 
                             : "bg-red-50 text-red-700 border-red-300 hover:bg-red-100"
                         }`}
-                        title={product.is_available ? "اضغط لإيقاف التوفر" : "اضغط لتفعيل التوفر"}
                       >
                         {product.is_available ? (
                           <><Eye className="w-3 h-3" /> متوفر - إيقاف</>
@@ -365,7 +380,7 @@ export default function AdminProductsPage() {
         </div>
       )}
 
-      {/* Modal إضافة/تعديل */}
+      {/* Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 z-[100] flex items-end md:items-center justify-center p-0 md:p-4" onClick={() => setIsModalOpen(false)}>
           <div 

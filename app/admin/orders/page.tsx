@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
+import { useRoleGuard } from "../hooks/useRoleGuard";
 import { Loader2, RefreshCw, ShoppingBag, ChevronDown, ChevronUp, Phone, MapPin, AlertTriangle, CheckCircle2 } from "lucide-react";
 
 interface Order {
@@ -43,11 +44,15 @@ const STATUS_OPTIONS = [
 ];
 
 export default function AdminOrdersPage() {
+  const { authorized, userRole } = useRoleGuard(["admin", "sales", "delivery"]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [orderItems, setOrderItems] = useState<Record<number, any[]>>({});
   const [loading, setLoading] = useState(true);
   const [expandedOrder, setExpandedOrder] = useState<number | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>("all");
+
+  // هل يمكن للمستخدم تغيير حالة الطلب؟
+  const canChangeStatus = userRole === "admin" || userRole === "sales" || userRole === "delivery";
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -65,8 +70,8 @@ export default function AdminOrdersPage() {
   };
 
   useEffect(() => {
-    fetchOrders();
-  }, []);
+    if (authorized) fetchOrders();
+  }, [authorized]);
 
   const toggleOrderDetails = async (orderId: number) => {
     if (expandedOrder === orderId) {
@@ -108,6 +113,14 @@ export default function AdminOrdersPage() {
       hour: "2-digit", minute: "2-digit" 
     });
   };
+
+  if (authorized === null) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-8 h-8 text-sidr-green animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 md:p-8">
@@ -206,15 +219,21 @@ export default function AdminOrdersPage() {
                 </div>
 
                 <div className="flex gap-2 flex-wrap items-center">
-                  <select
-                    value={order.status}
-                    onChange={(e) => updateStatus(order.id, e.target.value)}
-                    className="border-2 border-gray-200 rounded-xl px-3 py-2 text-sm focus:border-sidr-green focus:outline-none bg-white"
-                  >
-                    {STATUS_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </select>
+                  {canChangeStatus ? (
+                    <select
+                      value={order.status}
+                      onChange={(e) => updateStatus(order.id, e.target.value)}
+                      className="border-2 border-gray-200 rounded-xl px-3 py-2 text-sm focus:border-sidr-green focus:outline-none bg-white"
+                    >
+                      {STATUS_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className={`text-xs px-3 py-2 rounded-xl font-semibold ${STATUS_LABELS[order.status]?.color}`}>
+                      {STATUS_LABELS[order.status]?.label}
+                    </span>
+                  )}
 
                   <button
                     onClick={() => toggleOrderDetails(order.id)}
@@ -255,7 +274,14 @@ export default function AdminOrdersPage() {
                     </div>
                     <div className="bg-white rounded-xl p-4">
                       <p className="font-bold mb-2">الدفع:</p>
-                      <p className="text-gray-600 mb-1">الطريقة: {order.payment_method === "cod" ? "الدفع عند الاستلام" : order.payment_method === "vodafone" ? "فودافون كاش" : "إنستاباي"}</p>
+                      <p className="text-gray-600 mb-1">
+                        الطريقة: {
+                          order.payment_method === "cod" ? "الدفع عند الاستلام" : 
+                          order.payment_method === "vodafone" ? "فودافون كاش" : 
+                          order.payment_method === "instapay" ? "إنستاباي" : 
+                          order.payment_method
+                        }
+                      </p>
                       {order.customer_whatsapp && <p className="text-gray-600 mb-1">واتساب: {order.customer_whatsapp}</p>}
                     </div>
                   </div>

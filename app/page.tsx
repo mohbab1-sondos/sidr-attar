@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { ShoppingCart, Leaf, Menu, X, Phone, MessageCircle, Search, Loader2 } from "lucide-react";
+import { ShoppingCart, Leaf, Menu, X, Phone, MessageCircle, Search, Loader2, StoreIcon, AlertCircle } from "lucide-react";
 import { useCart } from "./context/CartContext";
 import WeightModal from "./components/WeightModal";
 import { supabase } from "./lib/supabase";
@@ -11,6 +11,7 @@ export default function Home() {
   const { cart, addToCart, cartCount } = useCart();
   const [products, setProducts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
+  const [settings, setSettings] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
@@ -23,22 +24,16 @@ export default function Home() {
     async function fetchData() {
       try {
         setLoading(true);
-        const { data: cats, error: catError } = await supabase
-          .from("categories")
-          .select("*")
-          .order("sort_order", { ascending: true });
-        
-        if (catError) throw catError;
-        setCategories(cats || []);
 
-        const { data: prods, error: prodError } = await supabase
-          .from("products")
-          .select("*")
-          .eq("is_available", true)
-          .order("sort_order", { ascending: true });
-        
-        if (prodError) throw prodError;
-        setProducts(prods || []);
+        const [settingsRes, catsRes, prodsRes] = await Promise.all([
+          supabase.from("store_settings").select("*").limit(1).single(),
+          supabase.from("categories").select("*").order("sort_order", { ascending: true }),
+          supabase.from("products").select("*").eq("is_available", true).order("sort_order", { ascending: true }),
+        ]);
+
+        if (settingsRes.data) setSettings(settingsRes.data);
+        if (catsRes.data) setCategories(catsRes.data);
+        if (prodsRes.data) setProducts(prodsRes.data);
       } catch (err: any) {
         console.error("❌ خطأ في جلب البيانات:", err);
         setError(err.message || "حدث خطأ أثناء الاتصال بقاعدة البيانات");
@@ -50,6 +45,12 @@ export default function Home() {
   }, []);
 
   const handleAddToCart = (product: any) => {
+    // منع الإضافة إذا كان المتجر مغلقاً
+    if (settings && !settings.is_open) {
+      alert("المتجر مغلق حالياً. لا يمكن إضافة منتجات إلى السلة.");
+      return;
+    }
+
     if (product.sale_type === "weight") {
       setWeightProduct(product);
     } else {
@@ -79,7 +80,7 @@ export default function Home() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-sidr-cream">
         <Loader2 className="w-12 h-12 text-sidr-green animate-spin mb-4" />
-        <p className="text-sidr-green font-bold">جاري تحميل المنتجات...</p>
+        <p className="text-sidr-green font-bold">جاري تحميل المتجر...</p>
       </div>
     );
   }
@@ -95,13 +96,32 @@ export default function Home() {
     );
   }
 
+  const storeName = settings?.store_name || "عطارة سدرة";
+  const logoUrl = settings?.logo_url;
+  const welcomeMessage = settings?.welcome_message || "طبيعة أصيلة بين يديك";
+  const isOpen = settings?.is_open !== false;
+  const closedMessage = settings?.closed_message || "المتجر مغلق حالياً، سعداء بخدمتك قريباً";
+
   return (
     <div className="min-h-screen flex flex-col">
+      {/* شريط تحذيري إذا كان المتجر مغلقاً */}
+      {!isOpen && (
+        <div className="bg-red-600 text-white text-center py-2 px-4 text-sm font-semibold flex items-center justify-center gap-2">
+          <AlertCircle className="w-4 h-4" />
+          {closedMessage}
+        </div>
+      )}
+
       <header className="bg-sidr-green text-white sticky top-0 z-50 shadow-md">
         <div className="container mx-auto px-4 py-3 flex justify-between items-center">
           <div className="flex items-center gap-2">
-            <Leaf className="w-8 h-8 text-sidr-light-green" />
-            <h1 className="text-2xl font-bold">عطارة سدرة</h1>
+            {logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={logoUrl} alt={storeName} className="w-10 h-10 object-contain rounded-lg bg-white p-1" />
+            ) : (
+              <Leaf className="w-8 h-8 text-sidr-light-green" />
+            )}
+            <h1 className="text-2xl font-bold">{storeName}</h1>
           </div>
           <div className="flex items-center gap-4">
             <Link href="/cart" className="relative p-2 hover:bg-sidr-light-green/20 rounded-full transition">
@@ -126,9 +146,15 @@ export default function Home() {
 
       <section className="bg-sidr-light-green py-12 px-4 text-center">
         <div className="container mx-auto max-w-2xl">
-          <h2 className="text-3xl md:text-4xl font-bold text-sidr-green mb-4">طبيعة أصيلة بين يديك</h2>
-          <p className="text-lg text-gray-700 mb-8 leading-relaxed">منصة طلب إلكترونية بسيطة وسريعة تتيح لك اختيار المنتجات والكميات، ثم إرسال الطلب مباشرة إلى المتجر عبر واتساب.</p>
-          <button className="bg-sidr-brown hover:bg-sidr-brown/90 text-white font-bold py-3 px-8 rounded-full text-lg transition shadow-lg">تسوق الآن</button>
+          <h2 className="text-3xl md:text-4xl font-bold text-sidr-green mb-4">{welcomeMessage}</h2>
+          <p className="text-lg text-gray-700 mb-8 leading-relaxed">
+            منصة طلب إلكترونية بسيطة وسريعة تتيح لك اختيار المنتجات والكميات، ثم إرسال الطلب مباشرة إلى المتجر عبر واتساب.
+          </p>
+          <button 
+            disabled={!isOpen}
+            className="bg-sidr-brown hover:bg-sidr-brown/90 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-bold py-3 px-8 rounded-full text-lg transition shadow-lg">
+            {isOpen ? "تسوق الآن" : "المتجر مغلق حالياً"}
+          </button>
         </div>
       </section>
 
@@ -180,7 +206,7 @@ export default function Home() {
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
               {filteredProducts.map((product) => (
-                <div key={product.id} className="bg-white rounded-2xl shadow-sm hover:shadow-md transition overflow-hidden border border-gray-100 flex flex-col">
+                <div key={product.id} className={`bg-white rounded-2xl shadow-sm hover:shadow-md transition overflow-hidden border border-gray-100 flex flex-col ${!isOpen ? "opacity-60" : ""}`}>
                   <div className="h-40 md:h-48 bg-gray-100 relative">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
@@ -195,8 +221,10 @@ export default function Home() {
                         {product.price} جنيه
                         <span className="text-xs text-gray-500 font-normal mr-1">{product.sale_type === "weight" ? "/ كجم" : "/ قطعة"}</span>
                       </p>
-                      <button onClick={() => handleAddToCart(product)}
-                        className="w-full bg-sidr-green hover:bg-sidr-green/90 text-white py-2 rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2">
+                      <button 
+                        onClick={() => handleAddToCart(product)}
+                        disabled={!isOpen}
+                        className="w-full bg-sidr-green hover:bg-sidr-green/90 disabled:bg-gray-400 disabled:cursor-not-allowed text-white py-2 rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2">
                         <ShoppingCart className="w-4 h-4" /> إضافة للسلة
                       </button>
                     </div>
@@ -211,14 +239,22 @@ export default function Home() {
       <footer className="bg-sidr-green text-white py-8 px-4 mt-12">
         <div className="container mx-auto grid grid-cols-1 md:grid-cols-3 gap-8 text-center md:text-right">
           <div>
-            <h3 className="text-xl font-bold mb-4 flex items-center justify-center md:justify-start gap-2"><Leaf className="w-5 h-5" /> عطارة سدرة</h3>
+            <h3 className="text-xl font-bold mb-4 flex items-center justify-center md:justify-start gap-2">
+              {logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={logoUrl} alt={storeName} className="w-6 h-6 object-contain rounded bg-white p-0.5" />
+              ) : (
+                <Leaf className="w-5 h-5" />
+              )}
+              {storeName}
+            </h3>
             <p className="text-sidr-light-green text-sm">طبيعة أصيلة بين يديك. نقدم أفضل الأعشاب والزيوت الطبيعية.</p>
           </div>
           <div>
             <h4 className="font-bold mb-4">تواصل معنا</h4>
             <div className="flex flex-col gap-2 items-center md:items-start text-sm">
               <span className="flex items-center gap-2"><Phone className="w-4 h-4" /> 01000000000</span>
-              <span className="flex items-center gap-2"><MessageCircle className="w-4 h-4" /> واتساب: 01000000000</span>
+              <span className="flex items-center gap-2"><MessageCircle className="w-4 h-4" /> واتساب: {settings?.whatsapp_number || "-"}</span>
             </div>
           </div>
           <div>
@@ -231,11 +267,10 @@ export default function Home() {
           </div>
         </div>
         <div className="text-center text-sidr-light-green/60 text-xs mt-8 border-t border-sidr-light-green/20 pt-4">
-          &copy; {new Date().getFullYear()} عطارة سدرة. جميع الحقوق محفوظة.
+          &copy; {new Date().getFullYear()} {storeName}. جميع الحقوق محفوظة.
         </div>
       </footer>
 
-      {/* WeightModal - في المكان الصحيح الآن (أسفل الملف، قبل إغلاق div الرئيسي) */}
       {weightProduct && (
         <WeightModal
           productName={weightProduct.name}

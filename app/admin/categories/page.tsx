@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
+import { useRoleGuard } from "../hooks/useRoleGuard";
 import { Loader2, Plus, Edit, Trash2, X, Save, Tag, AlertCircle } from "lucide-react";
 
 interface Category {
@@ -12,6 +13,7 @@ interface Category {
 }
 
 export default function AdminCategoriesPage() {
+  const { authorized } = useRoleGuard(["admin", "sales"]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [productCounts, setProductCounts] = useState<Record<number, number>>({});
@@ -35,7 +37,6 @@ export default function AdminCategoriesPage() {
       setCategories(data || []);
     }
 
-    // جلب عدد المنتجات في كل تصنيف
     const { data: products } = await supabase.from("products").select("category_id");
     if (products) {
       const counts: Record<number, number> = {};
@@ -51,8 +52,8 @@ export default function AdminCategoriesPage() {
   };
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (authorized) fetchData();
+  }, [authorized]);
 
   const openAddModal = () => {
     setEditingCategory(null);
@@ -115,6 +116,22 @@ export default function AdminCategoriesPage() {
     }
     fetchData();
   };
+
+  if (authorized === null) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-8 h-8 text-sidr-green animate-spin" />
+      </div>
+    );
+  }
+
+  if (authorized === false) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <p className="text-gray-500">ليس لديك صلاحية الوصول لهذه الصفحة</p>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 md:p-8">
@@ -187,7 +204,6 @@ export default function AdminCategoriesPage() {
         </div>
       )}
 
-      {/* Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/60 z-[100] flex items-end md:items-center justify-center p-0 md:p-4" onClick={() => setIsModalOpen(false)}>
           <div 
