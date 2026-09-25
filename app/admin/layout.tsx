@@ -13,28 +13,73 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [user, setUser] = useState<any>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  // إذا كنا في صفحة تسجيل الدخول، لا نطبق أي حماية
+  const isLoginPage = pathname === "/admin/login";
+
   useEffect(() => {
+    let mounted = true;
+
+    // دالة للتحقق من الجلسة
     async function checkAuth() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        router.push("/admin/login");
-        return;
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        
+        if (!mounted) return;
+
+        if (error) {
+          console.error("خطأ في التحقق من الجلسة:", error);
+          if (!isLoginPage) router.push("/admin/login");
+          setLoading(false);
+          return;
+        }
+
+        if (data.session?.user) {
+          setUser(data.session.user);
+        } else if (!isLoginPage) {
+          router.push("/admin/login");
+        }
+      } catch (err) {
+        console.error("خطأ غير متوقع:", err);
+        if (!isLoginPage) router.push("/admin/login");
+      } finally {
+        if (mounted) setLoading(false);
       }
-      setUser(session.user);
-      setLoading(false);
     }
+
     checkAuth();
-  }, [router]);
+
+    // الاستماع لتغييرات الجلسة
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mounted) return;
+      if (session?.user) {
+        setUser(session.user);
+      } else {
+        setUser(null);
+        if (!isLoginPage) router.push("/admin/login");
+      }
+    });
+
+    return () => {
+      mounted = false;
+      authListener.subscription.unsubscribe();
+    };
+  }, [router, isLoginPage]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.push("/admin/login");
   };
 
+  // إذا كنا في صفحة الدخول، اعرض المحتوى مباشرة بدون أي تحقق
+  if (isLoginPage) {
+    return <>{children}</>;
+  }
+
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-sidr-cream">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-sidr-cream">
         <Loader2 className="w-10 h-10 text-sidr-green animate-spin" />
+        <p className="text-sm text-gray-500 mt-4">جاري التحقق من الجلسة...</p>
       </div>
     );
   }
@@ -48,7 +93,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="min-h-screen bg-gray-50 flex" dir="rtl">
-      {/* Sidebar */}
       <aside className={`fixed md:static inset-y-0 right-0 z-50 w-64 bg-sidr-green text-white transform transition-transform duration-300 ${sidebarOpen ? "translate-x-0" : "translate-x-full md:translate-x-0"}`}>
         <div className="p-6 border-b border-sidr-light-green/20">
           <div className="flex items-center justify-between">
@@ -97,12 +141,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
       </aside>
 
-      {/* Overlay for mobile */}
       {sidebarOpen && (
         <div className="fixed inset-0 bg-black/50 z-40 md:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
-      {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0">
         <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between md:hidden sticky top-0 z-30">
           <button onClick={() => setSidebarOpen(true)} className="p-2">
