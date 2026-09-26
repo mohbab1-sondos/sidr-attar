@@ -4,9 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "../lib/supabase";
-import {Leaf, ShoppingBag, Package, Tag, Settings, LogOut, Loader2, Menu, X, Users, BarChart3} from "lucide-react";
-
-
+import { Leaf, ShoppingBag, Package, Tag, Settings, LogOut, Loader2, Menu, X, Users, BarChart3 } from "lucide-react";
 
 interface MenuItem {
   href: string;
@@ -92,7 +90,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             setUserRole(role);
             fetchNewOrdersCount();
           } else if (!isLoginPage) {
-            // إذا لم يكن هناك دور، اعرض رسالة
             router.push("/admin/login");
           }
         } else if (!isLoginPage) {
@@ -167,17 +164,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     );
   }
 
-  // قائمة العناصر الكاملة مع تحديد الأدوار المسموح لها
   const allMenuItems: MenuItem[] = [
     { href: "/admin/orders", label: "الطلبات", icon: ShoppingBag, badge: newOrdersCount, roles: ["admin", "sales", "delivery"] },
     { href: "/admin/products", label: "المنتجات", icon: Package, roles: ["admin", "sales"] },
     { href: "/admin/categories", label: "التصنيفات", icon: Tag, roles: ["admin", "sales"] },
+    { href: "/admin/reports", label: "التقارير", icon: BarChart3, roles: ["admin"] },
     { href: "/admin/users", label: "المستخدمون", icon: Users, roles: ["admin"] },
     { href: "/admin/settings", label: "الإعدادات", icon: Settings, roles: ["admin"] },
-        { href: "/admin/reports", label: "التقارير", icon: BarChart3, roles: ["admin"] },
   ];
 
-  // تصفية العناصر حسب دور المستخدم
   const menuItems = allMenuItems.filter(item => 
     userRole && item.roles.includes(userRole)
   );
@@ -190,19 +185,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   };
 
   return (
-      return (
-    <>
-      <link rel="manifest" href="/admin/manifest.webmanifest" />
-      <div className="min-h-screen bg-gray-50 flex" dir="rtl">
-        {/* ... باقي الكود ... */}
-      </div>
-    </>
-  );
-
-    <div className="min-h-screen bg-gray-50 flex" dir="rtl">
-             return (
     <div className="min-h-screen bg-gray-50 flex" dir="rtl">
       <link rel="manifest" href="/admin/manifest.webmanifest" />
+      
       <aside className={`fixed md:static inset-y-0 right-0 z-50 w-64 bg-sidr-green text-white transform transition-transform duration-300 ${sidebarOpen ? "translate-x-0" : "translate-x-full md:translate-x-0"} flex flex-col`}>
         <div className="p-6 border-b border-sidr-light-green/20">
           <div className="flex items-center justify-between">
