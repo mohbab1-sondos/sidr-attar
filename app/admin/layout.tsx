@@ -190,7 +190,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   };
 
   return (
+      return (
+    <>
+      <link rel="manifest" href="/admin/manifest.webmanifest" />
+      <div className="min-h-screen bg-gray-50 flex" dir="rtl">
+        {/* ... باقي الكود ... */}
+      </div>
+    </>
+  );
+
     <div className="min-h-screen bg-gray-50 flex" dir="rtl">
+             return (
+    <div className="min-h-screen bg-gray-50 flex" dir="rtl">
+      <link rel="manifest" href="/admin/manifest.webmanifest" />
       <aside className={`fixed md:static inset-y-0 right-0 z-50 w-64 bg-sidr-green text-white transform transition-transform duration-300 ${sidebarOpen ? "translate-x-0" : "translate-x-full md:translate-x-0"} flex flex-col`}>
         <div className="p-6 border-b border-sidr-light-green/20">
           <div className="flex items-center justify-between">
