@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "../lib/supabase";
-import { Leaf, ShoppingBag, Package, Tag, Settings, LogOut, Loader2, Menu, X, Users } from "lucide-react";
+import {Leaf, ShoppingBag, Package, Tag, Settings, LogOut, Loader2, Menu, X, Users, BarChart3} from "lucide-react";
+
+
 
 interface MenuItem {
   href: string;
@@ -172,6 +174,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { href: "/admin/categories", label: "التصنيفات", icon: Tag, roles: ["admin", "sales"] },
     { href: "/admin/users", label: "المستخدمون", icon: Users, roles: ["admin"] },
     { href: "/admin/settings", label: "الإعدادات", icon: Settings, roles: ["admin"] },
+        { href: "/admin/reports", label: "التقارير", icon: BarChart3, roles: ["admin"] },
   ];
 
   // تصفية العناصر حسب دور المستخدم
